@@ -69,7 +69,7 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 	}
 	//convert image to base64
 	encoded := base64.StdEncoding.EncodeToString(fileData)
-	dataUrl := fmt.Sprintf("data:%s;base64;%s", dataType, encoded)
+	dataUrl := fmt.Sprintf("data:%s;base64,%s", dataType, encoded)
 
 	video.ThumbnailURL = &dataUrl
 
