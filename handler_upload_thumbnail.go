@@ -1,7 +1,10 @@
 package main
 
 import (
+	"database/sql"
+	"encoding/base64"
 	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/bootdotdev/learn-file-storage-s3-golang-starter/internal/auth"
@@ -28,10 +31,52 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-
 	fmt.Println("uploading thumbnail for video", videoID, "by user", userID)
 
-	// TODO: implement the upload here
+	const maxMemory = 10 << 20
 
-	respondWithJSON(w, http.StatusOK, struct{}{})
+	err = r.ParseMultipartForm(maxMemory)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "file too big", err)
+		return
+	}
+	file, header, err := r.FormFile("thumbnail")
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+		return
+	}
+	defer file.Close()
+	dataType := header.Header.Get("Content-type")
+	fileData, err := io.ReadAll(file)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "internal server error", err)
+		return
+	}
+	//check whether video owner is same as JWT authenticated user
+	video, err := cfg.db.GetVideo(videoID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusBadRequest, "Video doesn't exist", err)
+			return
+		} else {
+			respondWithError(w, http.StatusInternalServerError, "database error", err)
+			return
+		}
+	}
+	if video.UserID != userID {
+		respondWithError(w, http.StatusUnauthorized, "unauthorized", err)
+		return
+	}
+	//convert image to base64
+	encoded := base64.StdEncoding.EncodeToString(fileData)
+	dataUrl := fmt.Sprintf("data:%s;base64;%s", dataType, encoded)
+
+	video.ThumbnailURL = &dataUrl
+
+	err = cfg.db.UpdateVideo(video)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "internal status error", err)
+		return
+	}
+	respondWithJSON(w, http.StatusOK, video)
 }
